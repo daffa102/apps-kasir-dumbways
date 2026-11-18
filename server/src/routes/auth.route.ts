@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { login, getMe } from "../controllers/auth.controllers"
+import { login, getMe } from "../controllers/auth.controller"
 import { verifyToken } from "../middleware/auth.middleware";
 
 

@@ -59,16 +59,32 @@ enum OrderStatus{
   CANCELLED
 }
 
+enum PaymentMethod {
+  CASH
+  QRIS
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
 model Order{
   id String @id @default(uuid())
   orderNumber String @unique
   customerName String
   totalAmount Int
-  cashGiven Int
-  changeAmount Int
+  cashGiven Int?
+  changeAmount Int?
   status OrderStatus @default(PENDING)
   userId String
   cashier User @relation(fields: [userId], references: [id])
+  subtotalAmount Int
+  taxRate        Int
+  taxAmount      Int
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(PENDING)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
