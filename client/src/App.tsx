@@ -2,6 +2,7 @@ import axios from "axios";
 import { useState, type FormEvent } from "react";
 import LoginPage from "./components/auth/LoginPage";
 import { useAuth } from "./context/useAuth";
+import KdsPage from "./components/kds/KdsPage";
 import { api } from "./lib/api";
 import {
   loginResponseSchema,
@@ -61,6 +62,10 @@ function App() {
         Memeriksa sesi...
       </main>
     );
+  }
+
+  if (user?.role === "BARISTA") {
+    return <KdsPage />;
   }
 
   if (user) {

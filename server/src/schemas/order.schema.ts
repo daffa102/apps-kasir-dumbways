@@ -24,3 +24,7 @@ export const createOrderSchema = z.object({
 
     return true;
 })
+
+export const kdsStatusUpdateSchema = z.object({
+    status: z.enum(["IN_PROGRESS", "READY", "COMPLETED"]),
+});

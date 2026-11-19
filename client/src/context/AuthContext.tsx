@@ -4,8 +4,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { io } from "socket.io-client";
-import { api, API_ORIGIN } from "../lib/api";
+import { api } from "../lib/api";
 import {
   authMeResponseSchema,
   type AuthUser,
@@ -56,14 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!token || user?.role !== "BARISTA") return;
-
-    const socket = io(API_ORIGIN, { auth: { token } });
-    return () => {
-      socket.disconnect();
-    };
-  }, [token, user?.role]);
 
   const login = (nextToken: string, nextUser: AuthUser) => {
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, nextToken);

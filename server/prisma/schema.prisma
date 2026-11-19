@@ -55,6 +55,7 @@ model Menu{
 enum OrderStatus{
   PENDING
   IN_PROGRESS
+  READY
   COMPLETED
   CANCELLED
 }
@@ -85,6 +86,7 @@ model Order{
   taxAmount      Int
   paymentMethod PaymentMethod
   paymentStatus PaymentStatus @default(PENDING)
+  kdsArchivedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

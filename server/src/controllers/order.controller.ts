@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-import { createOrderSchema } from "../schemas/order.schema";
+import { OrderStatus, PrismaClient } from "@prisma/client";
+import {
+  createOrderSchema,
+  kdsStatusUpdateSchema,
+} from "../schemas/order.schema";
 import { randomUUID } from "crypto";
 import snap from "../config/midtrans";
 import type { SnapTransactionResponse } from "midtrans-client";
@@ -181,17 +184,223 @@ export const createOrder = async (req: Request, res: Response) => {
 };
 
 export const getKdsOrders = async (req: Request, res: Response) => {
-  const orders = await prisma.order.findMany({
-    where: {
-      paymentStatus: "PAID",
-      status: { in: ["PENDING", "IN_PROGRESS"] },
-    },
-    include: { items: { include: { menu: true } } },
-    orderBy: { createdAt: "asc" },
-  });
+  try {
+    const orders = await prisma.order.findMany({
+      where: {
+        paymentStatus: "PAID",
+        kdsArchivedAt: null,
+        status: {
+          in: [
+            OrderStatus.PENDING,
+            OrderStatus.IN_PROGRESS,
+            OrderStatus.READY,
+            OrderStatus.COMPLETED,
+          ],
+        },
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        customerName: true,
+        paymentMethod: true,
+        status: true,
+        createdAt: true,
+        items: {
+          select: {
+            id: true,
+            quantity: true,
+            note: true,
+            menu: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
 
-  return res.status(200).json({
-    success: true,
-    data: orders,
-  });
+    return res.status(200).json({ success: true, data: orders });
+  } catch (error) {
+    console.error("Gagal memuat order KDS:", error);
+    return res.status(500).json({
+      success: false,
+      messages: "Gagal memuat tiket KDS",
+    });
+  }
+};
+
+export const updateKdsOrderStatus = async (req: Request, res: Response) => {
+  try {
+    const validation = kdsStatusUpdateSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        success: false,
+        messages: "Status tiket tidak valid",
+        errors: validation.error.format(),
+      });
+    }
+
+    const orderId = req.params.id as string;
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        paymentStatus: true,
+        kdsArchivedAt: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        messages: "Tiket tidak ditemukan",
+      });
+    }
+
+    if (order.paymentStatus !== "PAID" || order.kdsArchivedAt) {
+      return res.status(409).json({
+        success: false,
+        messages: "Tiket tidak aktif di KDS",
+      });
+    }
+
+    const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
+      [OrderStatus.PENDING]: [OrderStatus.IN_PROGRESS],
+      [OrderStatus.IN_PROGRESS]: [OrderStatus.READY],
+      [OrderStatus.READY]: [OrderStatus.COMPLETED],
+      [OrderStatus.COMPLETED]: [],
+      [OrderStatus.CANCELLED]: [],
+    };
+    const nextStatus = validation.data.status as OrderStatus;
+
+    if (!allowedTransitions[order.status].includes(nextStatus)) {
+      return res.status(409).json({
+        success: false,
+        messages: "Perubahan status tiket tidak diperbolehkan",
+      });
+    }
+
+    const updateResult = await prisma.order.updateMany({
+      where: {
+        id: order.id,
+        status: order.status,
+        paymentStatus: "PAID",
+        kdsArchivedAt: null,
+      },
+      data: { status: nextStatus },
+    });
+
+    if (updateResult.count === 0) {
+      return res.status(409).json({
+        success: false,
+        messages: "Tiket sudah berubah. Muat ulang papan KDS.",
+      });
+    }
+
+    const io = req.app.get("io") as Server;
+    io.to("kds:baristas").emit("kds:orders-updated");
+
+    return res.status(200).json({
+      success: true,
+      data: { id: order.id, status: nextStatus },
+    });
+  } catch (error) {
+    console.error("Gagal memperbarui status tiket KDS:", error);
+    return res.status(500).json({
+      success: false,
+      messages: "Gagal memperbarui status tiket",
+    });
+  }
+};
+
+export const archiveCompletedKdsOrders = async (_req: Request, res: Response) => {
+  try {
+    const result = await prisma.order.updateMany({
+      where: {
+        paymentStatus: "PAID",
+        status: OrderStatus.COMPLETED,
+        kdsArchivedAt: null,
+      },
+      data: { kdsArchivedAt: new Date() },
+    });
+
+    if (result.count > 0) {
+      const io = res.app.get("io") as Server;
+      io.to("kds:baristas").emit("kds:orders-updated");
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { archivedCount: result.count },
+    });
+  } catch (error) {
+    console.error("Gagal mengarsipkan tiket KDS:", error);
+    return res.status(500).json({
+      success: false,
+      messages: "Gagal membersihkan tiket selesai",
+    });
+  }
+};
+
+export const archiveCompletedKdsOrder = async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id as string;
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        paymentStatus: true,
+        kdsArchivedAt: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        messages: "Tiket tidak ditemukan",
+      });
+    }
+
+    if (
+      order.status !== OrderStatus.COMPLETED ||
+      order.paymentStatus !== "PAID" ||
+      order.kdsArchivedAt
+    ) {
+      return res.status(409).json({
+        success: false,
+        messages: "Hanya tiket selesai yang dapat diarsipkan",
+      });
+    }
+
+    const result = await prisma.order.updateMany({
+      where: {
+        id: order.id,
+        status: OrderStatus.COMPLETED,
+        paymentStatus: "PAID",
+        kdsArchivedAt: null,
+      },
+      data: { kdsArchivedAt: new Date() },
+    });
+
+    if (result.count === 0) {
+      return res.status(409).json({
+        success: false,
+        messages: "Tiket sudah berubah. Muat ulang papan KDS.",
+      });
+    }
+
+    const io = req.app.get("io") as Server;
+    io.to("kds:baristas").emit("kds:orders-updated");
+
+    return res.status(200).json({
+      success: true,
+      data: { id: order.id, archived: true },
+    });
+  } catch (error) {
+    console.error("Gagal mengarsipkan tiket KDS:", error);
+    return res.status(500).json({
+      success: false,
+      messages: "Gagal mengarsipkan tiket",
+    });
+  }
 };
