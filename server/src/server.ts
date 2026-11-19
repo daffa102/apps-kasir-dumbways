@@ -10,10 +10,16 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken"
 import path from "path";
+import { getJwtSecret } from "./config/jwt";
 
 
 const app = express()
 const PORT = process.env.PORT || 5001;
+const JWT_SECRET = getJwtSecret();
+
+if (Buffer.byteLength(JWT_SECRET, "utf8") < 32) {
+  console.warn("Peringatan: JWT_SECRET sebaiknya minimal 32 byte.");
+}
 
 const httpServer = createServer(app);
 
@@ -27,14 +33,13 @@ app.set("io", io);
 
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
-  const secret = process.env.JWT_SECRET;
 
-  if (typeof token !== "string" || !secret) {
+  if (typeof token !== "string") {
     return next(new Error("Token belum tersedia"));
   }
 
   try {
-    const user = jwt.verify(token, secret);
+    const user = jwt.verify(token, JWT_SECRET);
     if (typeof user === "string" || user.role !== "BARISTA") {
       return next(new Error("Akses hanya untuk BARISTA"));
     }

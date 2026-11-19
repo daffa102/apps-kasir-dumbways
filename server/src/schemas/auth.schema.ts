@@ -4,9 +4,9 @@ import { z } from "zod";
 export const loginSchema = z.object({
     email: z
     .string()
-    .min(1, "Email tidak boleh kosong")
-    .trim()
-    .email("Format email tidak valid"),
+        .trim()
+        .min(1, "Email tidak boleh kosong")
+        .email("Format email tidak valid"),
 
     password:z
     .string()

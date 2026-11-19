@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction} from "express";
 import jwt from "jsonwebtoken";
+import { getJwtSecret } from "../config/jwt";
 
 export interface UserPayload {
     id: string;
@@ -22,21 +23,21 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) =>
 
     if(!authHeader || !authHeader.startsWith("Bearer "))
     {
-       return res.status(401).json({ messages: "Akses ditolak, token ditemukan"})
+       return res.status(401).json({ messages: "Token tidak ditemukan" });
     }
 
     const token = authHeader.split(" ")[1];
 
     try{
-        const secret = process.env.JWT_SECRET || "default secret";
-
-        const decoded = jwt.verify(token, secret) as UserPayload;
+        const decoded = jwt.verify(token, getJwtSecret()) as UserPayload;
 
         req.user = decoded;
 
         next()
     }catch{
-        return res.status(403).json({messages: "Token anda tidak valid, sudah kadaluwarsa"});
+        return res.status(401).json({
+            messages: "Token tidak valid atau sudah kadaluwarsa",
+        });
     }
 };
 

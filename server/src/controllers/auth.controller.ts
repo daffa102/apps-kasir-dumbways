@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { loginSchema } from "../schemas/auth.schema"
+import { getJwtSecret } from "../config/jwt";
 
 const prisma = new PrismaClient();
 
@@ -37,12 +38,10 @@ export const login = async (req: Request, res: Response) => {
             });
         }
 
-        const secret = process.env.JWT_SECRET || "default password";
-
         const token = jwt.sign({
             id: user.id, email:user.email, role:user.role
         },
-        secret,
+        getJwtSecret(),
         {expiresIn: "1d"}
     );
 
